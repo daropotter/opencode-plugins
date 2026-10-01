@@ -1,6 +1,6 @@
 export type Forge = 'github' | 'gitlab';
 
-const TITLE_PREFIX_RE = /^\[([^\]]*)\] /;
+const LEGACY_PREFIX_RE = /^\[[^[\],]+, [!#](?:\d+|N\/A)\] /;
 const MAX_TITLE_LENGTH = 100;
 
 const ISSUE_PATTERNS: RegExp[] = [
@@ -27,53 +27,28 @@ function naRef(forge: Forge): string {
   return forge === 'github' ? '#N/A' : '!N/A';
 }
 
-function naRefPattern(forge: Forge): RegExp {
-  return forge === 'github' ? /#N\/A/ : /!N\/A/;
-}
-
-function realRefPattern(forge: Forge): RegExp {
-  return forge === 'github' ? /#\d+/ : /!\d+/;
-}
-
 function formatRef(forge: Forge, iid: string): string {
   return forge === 'github' ? `#${iid}` : `!${iid}`;
 }
 
-function finish(title: string, current: string): string | undefined {
-  const next = title.slice(0, MAX_TITLE_LENGTH);
-  return next === current ? undefined : next;
+export function reconcileTitle(title: string, prefix?: string, previousPrefix?: string): string {
+  const rest =
+    previousPrefix && title.startsWith(`${previousPrefix} `)
+      ? title.slice(previousPrefix.length + 1)
+      : title.replace(LEGACY_PREFIX_RE, '');
+  return (prefix ? `${prefix} ${rest}` : rest).slice(0, MAX_TITLE_LENGTH);
 }
 
-export async function prefixTitle(
-  title: string,
+export async function branchPrefix(
   forge: Forge,
   branch: string,
   lookupRef: () => Promise<string | undefined>,
-): Promise<string | undefined> {
-  const existingPrefix = title.match(TITLE_PREFIX_RE);
-
-  if (existingPrefix) {
-    const prefixContent = existingPrefix[1] ?? '';
-    if (realRefPattern(forge).test(prefixContent)) return undefined;
-
-    const rest = title.slice(existingPrefix[0].length);
-    const iid = await lookupRef();
-
-    if (!naRefPattern(forge).test(prefixContent)) {
-      const ref = iid ? formatRef(forge, iid) : naRef(forge);
-      return finish(`[${prefixContent}, ${ref}] ${rest}`, title);
-    }
-
-    if (!iid) return undefined;
-    const prefix = prefixContent.replace(naRefPattern(forge), formatRef(forge, iid));
-    return finish(`[${prefix}] ${rest}`, title);
-  }
-
+): Promise<string> {
   const issueNumber = extractIssueNumber(branch);
   const iid = await lookupRef();
   const parts = [
     issueNumber ? `#${issueNumber}` : branch,
     iid ? formatRef(forge, iid) : naRef(forge),
   ];
-  return finish(`[${parts.join(', ')}] ${title}`, title);
+  return `[${parts.join(', ')}]`;
 }

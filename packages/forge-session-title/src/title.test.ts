@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { detectForge, extractIssueNumber, prefixTitle } from './title.ts';
+import { branchPrefix, detectForge, extractIssueNumber, reconcileTitle } from './title.ts';
 
 const found = (iid: string) => async () => iid;
 const missing = async () => undefined;
@@ -27,47 +27,48 @@ describe('extractIssueNumber', () => {
   });
 });
 
-describe('prefixTitle', () => {
+describe('branchPrefix', () => {
   test('adds the issue and merge request references', async () => {
-    expect(await prefixTitle('Fix login', 'gitlab', '123-fix-login', found('45'))).toBe(
-      '[#123, !45] Fix login',
-    );
+    expect(await branchPrefix('gitlab', '123-fix-login', found('45'))).toBe('[#123, !45]');
   });
 
   test('uses the branch name and a placeholder when nothing is found', async () => {
-    expect(await prefixTitle('Tidy up', 'github', 'tidy-up', missing)).toBe(
-      '[tidy-up, #N/A] Tidy up',
-    );
+    expect(await branchPrefix('github', 'tidy-up', missing)).toBe('[tidy-up, #N/A]');
   });
+});
 
+describe('reconcileTitle', () => {
   test('replaces the placeholder once a reference exists', async () => {
-    expect(await prefixTitle('[#123, !N/A] Fix login', 'gitlab', '123-x', found('45'))).toBe(
-      '[#123, !45] Fix login',
+    expect(reconcileTitle('[#123, !N/A] Fix login', '[#123, !45]')).toBe('[#123, !45] Fix login');
+  });
+
+  test('replaces stale legacy references together', () => {
+    expect(reconcileTitle('[#123, !45] Review changes', '[!456]')).toBe('[!456] Review changes');
+  });
+
+  test('preserves user prefixes', () => {
+    expect(reconcileTitle('[WIP] Fix login', '[!456]')).toBe('[!456] [WIP] Fix login');
+    expect(reconcileTitle('[!456] [WIP] Fix login', '[!789]', '[!456]')).toBe(
+      '[!789] [WIP] Fix login',
     );
   });
 
-  test('keeps the placeholder while no reference exists', async () => {
-    expect(await prefixTitle('[#123, !N/A] Fix login', 'gitlab', '123-x', missing)).toBeUndefined();
-  });
-
-  test('appends a reference to a prefix that lacks one', async () => {
-    expect(await prefixTitle('[WIP] Fix login', 'gitlab', '123-x', found('45'))).toBe(
-      '[WIP, !45] Fix login',
+  test('repeated reconciliation is stable', () => {
+    expect(reconcileTitle('[!456] Review changes', '[!456]', '[!456]')).toBe(
+      '[!456] Review changes',
     );
   });
 
-  test('leaves titles that already carry a reference alone', async () => {
-    let looked = false;
-    const result = await prefixTitle('[#123, !45] Fix login', 'gitlab', '123-x', async () => {
-      looked = true;
-      return '99';
-    });
-    expect(result).toBeUndefined();
-    expect(looked).toBe(false);
+  test('removes the managed prefix when resetting on a default branch', () => {
+    expect(reconcileTitle('[!456] Review changes', undefined, '[!456]')).toBe('Review changes');
+  });
+
+  test('preserves a renamed title', () => {
+    expect(reconcileTitle('New title', '[!456]', '[!456]')).toBe('[!456] New title');
   });
 
   test('truncates titles to 100 characters', async () => {
-    const result = await prefixTitle('x'.repeat(120), 'github', '1-a', found('2'));
+    const result = reconcileTitle('x'.repeat(120), '[#1, #2]');
     expect(result).toHaveLength(100);
     expect(result?.startsWith('[#1, #2] ')).toBe(true);
   });

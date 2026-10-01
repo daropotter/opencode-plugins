@@ -1,7 +1,7 @@
 # opencode-forge-session-title
 
 An [OpenCode](https://opencode.ai) plugin that automatically prefixes session titles with forge
-issue and PR/MR references extracted from the current git branch.
+issue and PR/MR references from the session's active task, with the current Git branch as a fallback.
 
 Requires OpenCode 2. For OpenCode 1, install the `opencode-v1` dist-tag
 (`npm install opencode-forge-session-title@opencode-v1`).
@@ -13,12 +13,24 @@ Requires OpenCode 2. For OpenCode 1, install the `opencode-v1` dist-tag
 | GitHub | `github.com` in remote | `gh pr list`   | `[#42, #108]`  |
 | GitLab | `gitlab` in remote     | `glab mr list` | `[#42, !108]`  |
 
-The forge is detected from `git remote get-url origin`. If the remote doesn't match either forge,
-the plugin is a no-op.
+For branch-based naming, the forge is detected from `git remote get-url origin`.
+Explicit session targets work independently of the checked-out branch or remote.
 
 ## How it works
 
-When OpenCode sets a session title, and each time an agent run finishes, the plugin:
+The plugin registers `set_session_target` and adds instructions to the agent's context.
+When you establish or change the primary issue, PR, or MR, the agent sets its full URL as the
+session target. Background references, comparisons, and dependencies keep the current target.
+
+For example, if the title starts with `[#123, !45]` and you ask the agent to review MR `!456`,
+the prefix becomes `[!456]`. The previous issue number is removed. The agent can provide
+`issue_url` when it has established the new MR's related issue.
+
+Targets persist per session across plugin reloads. The context includes the current target on
+each agent request. Calling `set_session_target` with `target: "branch"` returns to automatic
+branch-based naming. This behavior depends on the agent following the injected instructions.
+
+When no explicit target is set, the plugin:
 
 1. Reads the current git branch
 2. Extracts an issue number from the branch name (see patterns below)
@@ -28,8 +40,12 @@ When OpenCode sets a session title, and each time an agent run finishes, the plu
 If no PR/MR exists yet, the reference shows as `#N/A` (GitHub) or `!N/A` (GitLab) and is
 automatically replaced once one is created.
 
-Child sessions and untitled sessions are skipped. The repository's default branch and branches
-named `main`, `master`, `develop`, or `HEAD` are also skipped.
+The plugin reconciles the prefix after target changes, title changes, and successful agent runs.
+It preserves the title text and replaces stale managed prefixes.
+
+Child sessions and untitled sessions are skipped. Branch-based naming skips the repository's
+default branch and branches named `main`, `master`, `develop`, or `HEAD`. Explicit targets also
+work on these branches. Resetting to branch mode there removes the managed prefix.
 
 ## Branch name patterns
 
