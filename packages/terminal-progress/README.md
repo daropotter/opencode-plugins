@@ -19,8 +19,11 @@ Requires OpenCode 2. For OpenCode 1, install the `opencode-v1` dist-tag
 The plugin automatically detects which terminal is in use and becomes a no-op if none of the above
 are found. tmux passthrough is handled transparently when `$TMUX` is set.
 
-kitty renders OSC 9;4 progress as a percentage in the tab title since 0.39 and draws an in-window
-progress bar since 0.47 (see the `progress_bar` option in `kitty.conf`).
+kitty is supported on **0.47+**: kitty draws an in-window progress bar since 0.47 (see the
+`progress_bar` option in `kitty.conf`), while 0.39-0.46 only showed a percentage in the tab title
+and versions before 0.38 treated OSC 9;4 as notifications. The plugin therefore stays inactive on
+kitty unless it can confirm the version is at least 0.47, read from `TERM_PROGRAM_VERSION` or, on
+Linux, from the running kitty binary via `/proc/<KITTY_PID>/exe`.
 
 Set `OPENCODE_TERMINAL_PROGRESS=0` (or `false`/`no`) to disable progress reporting.
 
