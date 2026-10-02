@@ -21,9 +21,11 @@ are found. tmux passthrough is handled transparently when `$TMUX` is set.
 
 kitty is supported on **0.47+**: kitty draws an in-window progress bar since 0.47 (see the
 `progress_bar` option in `kitty.conf`), while 0.39-0.46 only showed a percentage in the tab title
-and versions before 0.38 treated OSC 9;4 as notifications. The plugin therefore stays inactive on
-kitty unless it can confirm the version is at least 0.47, read from `TERM_PROGRAM_VERSION` or, on
-Linux, from the running kitty binary via `/proc/<KITTY_PID>/exe`.
+and earlier versions treated OSC 9;4 as notifications. kitty does not set `TERM_PROGRAM`, so it is
+detected via `KITTY_WINDOW_ID` (also inside tmux), unless another terminal nested in kitty has set
+`TERM_PROGRAM`. The plugin stays inactive unless it can confirm the version is at least 0.47 by
+running `kitty --version` on the running emulator (`/proc/<KITTY_PID>/exe`, Linux) or on the binary
+in `KITTY_INSTALLATION_DIR` (Linux and macOS).
 
 Set `OPENCODE_TERMINAL_PROGRESS=0` (or `false`/`no`) to disable progress reporting.
 

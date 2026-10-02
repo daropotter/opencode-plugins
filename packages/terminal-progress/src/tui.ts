@@ -1,63 +1,14 @@
-import { closeSync, openSync, readlinkSync, writeSync } from 'node:fs';
+import { closeSync, openSync, writeSync } from 'node:fs';
 import type { Plugin } from '@opencode/plugin/tui';
-import { createAgentStateTracker, createViewFilter, exec } from '../../_shared/src/index.ts';
+import { createAgentStateTracker, createViewFilter } from '../../_shared/src/index.ts';
+import { detectKitty, isKittyHost } from './kitty.ts';
 
 type Terminal = 'iterm2' | 'wezterm' | 'windows-terminal' | 'ghostty' | 'kitty';
 
-// kitty renders an in-window progress bar only since 0.47 ("progress_bar" option).
-// Older versions (0.39-0.46) only showed a percentage in the tab title, and before
-// 0.38 OSC 9;4 was treated as a notification. We only enable kitty when we can
-// confirm the version is at least this.
-const KITTY_MIN_SUPPORTED = [0, 47, 0] as const;
-
-function parseKittyVersion(value: string): readonly number[] | undefined {
-  const match = value.match(/(?:^|\s)(\d+)\.(\d+)(?:\.(\d+))?/);
-  if (!match) return undefined;
-  return [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
-}
-
-async function detectKittyVersion(): Promise<readonly number[] | undefined> {
-  const env = process.env;
-  const programVersion = env['TERM_PROGRAM_VERSION'];
-  if (programVersion) {
-    const parsed = parseKittyVersion(programVersion);
-    if (parsed) return parsed;
-  }
-  // The shell integration may not be active, so fall back to querying the running
-  // kitty binary itself (Linux): /proc/<KITTY_PID>/exe points at the emulator that
-  // is actually writing to this terminal.
-  const kittyPid = env['KITTY_PID'];
-  if (kittyPid) {
-    try {
-      const exe = readlinkSync(`/proc/${kittyPid}/exe`);
-      const result = await exec(exe, ['--version']);
-      if (result.code === 0) {
-        const parsed = parseKittyVersion(result.stdout);
-        if (parsed) return parsed;
-      }
-    } catch {
-      // no /proc (e.g. macOS) or the process is gone
-    }
-  }
-  return undefined;
-}
-
-function isSupportedKitty(version: readonly number[]): boolean {
-  for (let i = 0; i < KITTY_MIN_SUPPORTED.length; i++) {
-    if ((version[i] ?? 0) > KITTY_MIN_SUPPORTED[i]) return true;
-    if ((version[i] ?? 0) < KITTY_MIN_SUPPORTED[i]) return false;
-  }
-  return true;
-}
-
 async function detectTerminal(): Promise<Terminal | undefined> {
   const env = process.env;
-  if (env['KITTY_WINDOW_ID'] || env['TERM_PROGRAM'] === 'kitty') {
-    const version = await detectKittyVersion();
-    if (version && isSupportedKitty(version)) {
-      return 'kitty';
-    }
-    return undefined;
+  if (isKittyHost(env)) {
+    return (await detectKitty(env)) ? 'kitty' : undefined;
   }
   if (env['TERM_PROGRAM'] === 'ghostty') {
     return 'ghostty';
