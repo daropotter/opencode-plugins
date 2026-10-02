@@ -1,6 +1,16 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 import type { Plugin } from '@opencode/plugin';
-import plugin from './index.ts';
+import type { Request } from './target.ts';
+
+const sourceBranches = new Map<string, string>();
+const lookups: Request[] = [];
+mock.module('./source.ts', () => ({
+  sourceBranch: async (request: Request) => {
+    lookups.push(request);
+    return sourceBranches.get(request.iid);
+  },
+}));
+const { default: plugin } = await import('./index.ts');
 
 type Tool = {
   execute: (input: unknown, context: { sessionID: string }) => Promise<unknown>;
@@ -134,6 +144,51 @@ describe('session target integration', () => {
     expect(app.sessions.get('one')?.title).toBe('[!456] Review changes');
     expect(await app.context()).toContain(mr);
     await app.cleanup();
+  });
+
+  test('tells the agent to target a newly created MR with its issue', async () => {
+    const app = await harness();
+    expect(await app.context()).toContain('After you create a PR or MR for the current task');
+    await app.set({ target: 'https://gitlab.com/group/project/-/issues/123' });
+    expect(app.sessions.get('one')?.title).toBe('[#123] Review changes');
+    await app.set({ target: mr, issue_url: 'https://gitlab.com/group/project/-/issues/123' });
+    expect(app.sessions.get('one')?.title).toBe('[#123, !456] Review changes');
+    await app.cleanup();
+  });
+
+  test('infers the related issue from the MR source branch', async () => {
+    sourceBranches.set('456', '321-fix-timeout');
+    lookups.length = 0;
+    try {
+      const app = await harness();
+      await app.set({ target: mr });
+      expect(lookups).toEqual([
+        { forge: 'gitlab', host: 'gitlab.com', project: 'group/project', iid: '456' },
+      ]);
+      expect(app.sessions.get('one')?.title).toBe('[#321, !456] Review changes');
+      expect(await app.context()).toContain('"branchIssue":"321"');
+      await app.set({ target: nextMr });
+      expect(app.sessions.get('one')?.title).toBe('[!789] Review changes');
+      await app.cleanup();
+    } finally {
+      sourceBranches.clear();
+    }
+  });
+
+  test('prefers an explicit issue and skips lookups for issue targets', async () => {
+    sourceBranches.set('456', '321-fix-timeout');
+    lookups.length = 0;
+    try {
+      const app = await harness();
+      await app.set({ target: mr, issue_url: 'https://gitlab.com/group/other/-/issues/42' });
+      expect(app.sessions.get('one')?.title).toBe('[#42, !456] Review changes');
+      await app.set({ target: 'https://gitlab.com/group/project/-/issues/7' });
+      expect(app.sessions.get('one')?.title).toBe('[#7] Review changes');
+      expect(lookups).toEqual([]);
+      await app.cleanup();
+    } finally {
+      sourceBranches.clear();
+    }
   });
 
   test('skips child sessions and sessions in another location', async () => {

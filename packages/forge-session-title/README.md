@@ -24,7 +24,12 @@ session target. Background references, comparisons, and dependencies keep the cu
 
 For example, if the title starts with `[#123, !45]` and you ask the agent to review MR `!456`,
 the prefix becomes `[!456]`. The previous issue number is removed. The agent can provide
-`issue_url` when it has established the new MR's related issue.
+`issue_url` when it has established the new MR's related issue. Without `issue_url`, the plugin
+reads the PR/MR source branch with `gh api` or `glab api` and extracts the issue number from it
+(see patterns below), so reviewing an MR from `321-fix-timeout` produces `[#321, !456]`.
+
+The agent is also instructed to set the new PR/MR as the target after creating one for the
+current task, so a session targeting issue `#123` becomes `[#123, !456]` once the MR exists.
 
 Targets persist per session across plugin reloads. The context includes the current target on
 each agent request. Calling `set_session_target` with `target: "branch"` returns to automatic

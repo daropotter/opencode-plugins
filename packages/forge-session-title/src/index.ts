@@ -1,7 +1,14 @@
 import type { Plugin } from '@opencode/plugin';
 import { exec } from '../../_shared/src/index.ts';
-import { branchPrefix, detectForge, reconcileTitle, type Forge } from './title.ts';
-import { parseTarget, targetPrefix, type Target } from './target.ts';
+import { sourceBranch } from './source.ts';
+import {
+  branchPrefix,
+  detectForge,
+  extractIssueNumber,
+  reconcileTitle,
+  type Forge,
+} from './title.ts';
+import { parseTarget, targetPrefix, targetRequest, type Target } from './target.ts';
 
 const SKIP_BRANCHES = new Set(['master', 'main', 'HEAD', 'develop']);
 type SessionState = { target?: Target; prefix?: string };
@@ -103,7 +110,7 @@ export default {
       editor.add({
         name: 'set_session_target',
         description:
-          'Set the primary issue, PR, or MR for this session title. Use a full URL, or "branch" to return to branch-based naming. This only changes local session metadata.',
+          'Set the primary issue, PR, or MR for this session title. Use a full URL, or "branch" to return to branch-based naming. Call it after creating a PR/MR for the current task. Without issue_url, the related issue is inferred from the PR/MR source branch name. This only changes local session metadata.',
         input: {
           type: 'object',
           properties: {
@@ -126,6 +133,12 @@ export default {
             if (session.parentID || session.location.directory !== ctx.location.directory) {
               throw new Error('Session targets can only be set in the current root session.');
             }
+            const request = target && !target.issueUrl ? targetRequest(target) : undefined;
+            const branch = request
+              ? await sourceBranch(request, ctx.location.directory).catch(() => undefined)
+              : undefined;
+            const branchIssue = branch ? extractIssueNumber(branch) : undefined;
+            if (target && branchIssue) target.branchIssue = branchIssue;
             const state = await stateFor(sessionID);
             await ctx.storage.set(`sessions/${sessionID}`, {
               ...(state.prefix ? { prefix: state.prefix } : {}),
@@ -150,6 +163,7 @@ export default {
         type: 'text',
         text: [
           'When the user establishes or changes the primary issue, PR, or MR for this session, call set_session_target with its full URL before starting that work.',
+          'After you create a PR or MR for the current task (for example with gpsup, glab mr create, gh pr create, or a forge tool), call set_session_target with the new PR/MR URL. Pass the current issue as issue_url when the PR/MR was created for it.',
           'Background references, comparisons, and dependencies do not change the target. Follow-ups without a new primary target keep the current target.',
           'Include issue_url only when its relationship to the target PR/MR is established. Never carry over the checked-out branch’s issue to another target.',
           'When the user explicitly returns to work on the checked-out branch, call set_session_target with target "branch".',

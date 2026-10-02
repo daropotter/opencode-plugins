@@ -1,6 +1,7 @@
 import type { Forge } from './title.ts';
 
-export type Target = { url: string; issueUrl?: string };
+export type Target = { url: string; issueUrl?: string; branchIssue?: string };
+export type Request = { forge: Forge; host: string; project: string; iid: string };
 
 function parseReference(value: string) {
   const url = new URL(value);
@@ -9,17 +10,24 @@ function parseReference(value: string) {
   }
   const github = url.hostname === 'github.com';
   const match = github
-    ? url.pathname.match(/^\/[^/]+\/[^/]+\/(pull|issues)\/([1-9]\d*)\/?$/)
+    ? url.pathname.match(/^\/([^/]+\/[^/]+)\/(pull|issues)\/([1-9]\d*)\/?$/)
     : url.pathname.match(/^\/(.+)\/-\/(merge_requests|issues|work_items)\/([1-9]\d*)\/?$/);
   if (!match) throw new Error('Use a GitHub or GitLab issue, pull request, or merge request URL.');
-  const kind = github ? match[1] : match[2];
-  const iid = github ? match[2] : match[3];
+  const [, project, kind, iid] = match as unknown as [string, string, string, string];
   const forge: Forge = github ? 'github' : 'gitlab';
   const issue = kind === 'issues' || kind === 'work_items';
   url.search = '';
   url.hash = '';
   url.pathname = url.pathname.replace(/\/$/, '');
-  return { url: url.href, forge, issue, ref: `${!issue && forge === 'gitlab' ? '!' : '#'}${iid}` };
+  return {
+    url: url.href,
+    forge,
+    host: url.host,
+    project,
+    iid,
+    issue,
+    ref: `${!issue && forge === 'gitlab' ? '!' : '#'}${iid}`,
+  };
 }
 
 export function parseTarget(input: unknown): Target | undefined {
@@ -46,8 +54,27 @@ export function parseTarget(input: unknown): Target | undefined {
   return { url: target.url, issueUrl: issue.url };
 }
 
+export function targetRequest(target: Target): Request | undefined {
+  const { forge, host, project, iid, issue } = parseReference(target.url);
+  return issue ? undefined : { forge, host, project, iid };
+}
+
+export function sourceBranchFromResponse(request: Request, stdout: string): string | undefined {
+  try {
+    const data = JSON.parse(stdout) as { source_branch?: unknown; head?: { ref?: unknown } };
+    const branch = request.forge === 'github' ? data.head?.ref : data.source_branch;
+    return typeof branch === 'string' && branch ? branch : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function targetPrefix(target: Target): string {
   const reference = parseReference(target.url);
-  const issue = target.issueUrl ? parseReference(target.issueUrl) : undefined;
-  return `[${issue ? `${issue.ref}, ` : ''}${reference.ref}]`;
+  const issue = target.issueUrl
+    ? parseReference(target.issueUrl).ref
+    : !reference.issue && target.branchIssue
+      ? `#${target.branchIssue}`
+      : undefined;
+  return `[${issue ? `${issue}, ` : ''}${reference.ref}]`;
 }
