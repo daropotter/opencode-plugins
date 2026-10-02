@@ -12,11 +12,15 @@ Requires OpenCode 2. For OpenCode 1, install the `opencode-v1` dist-tag
 | --------------------------------------------------------- | ----------------------------------------------------------- |
 | [Ghostty](https://ghostty.org)                            | `TERM_PROGRAM=ghostty`                                      |
 | [iTerm2](https://iterm2.com)                              | `TERM_PROGRAM=iTerm.app`, `LC_TERMINAL`, `ITERM_SESSION_ID` |
+| [kitty](https://sw.kovidgoyal.net/kitty/)                 | `KITTY_WINDOW_ID`, `TERM_PROGRAM=kitty`                     |
 | [WezTerm](https://wezfurlong.org/wezterm/)                | `TERM_PROGRAM=WezTerm`, `WEZTERM_EXECUTABLE`                |
 | [Windows Terminal](https://github.com/microsoft/terminal) | `WT_SESSION`                                                |
 
 The plugin automatically detects which terminal is in use and becomes a no-op if none of the above
 are found. tmux passthrough is handled transparently when `$TMUX` is set.
+
+kitty renders OSC 9;4 progress as a percentage in the tab title since 0.39 and draws an in-window
+progress bar since 0.47 (see the `progress_bar` option in `kitty.conf`).
 
 Set `OPENCODE_TERMINAL_PROGRESS=0` (or `false`/`no`) to disable progress reporting.
 

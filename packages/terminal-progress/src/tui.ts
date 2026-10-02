@@ -2,10 +2,13 @@ import { closeSync, openSync, writeSync } from 'node:fs';
 import type { Plugin } from '@opencode/plugin/tui';
 import { createAgentStateTracker, createViewFilter } from '../../_shared/src/index.ts';
 
-type Terminal = 'iterm2' | 'wezterm' | 'windows-terminal' | 'ghostty';
+type Terminal = 'iterm2' | 'wezterm' | 'windows-terminal' | 'ghostty' | 'kitty';
 
 function detectTerminal(): Terminal | undefined {
   const env = process.env;
+  if (env['KITTY_WINDOW_ID'] || env['TERM_PROGRAM'] === 'kitty') {
+    return 'kitty';
+  }
   if (env['TERM_PROGRAM'] === 'ghostty') {
     return 'ghostty';
   }
